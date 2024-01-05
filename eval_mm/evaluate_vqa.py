@@ -260,6 +260,7 @@ if __name__ == '__main__':
     parser.add_argument('--num-workers', type=int, default=1)
     parser.add_argument('--few-shot', type=int, default=0)
     parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--version', type=int, default=0)
     args = parser.parse_args()
 
     torch.distributed.init_process_group(
@@ -366,6 +367,9 @@ if __name__ == '__main__':
     merged_outputs = [json.loads(_) for _ in merged_outputs]
     merged_outputs = [_ for _ in itertools.chain.from_iterable(merged_outputs)]
 
+    out_path = 'out'
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)
     if torch.distributed.get_rank() == 0:
         print(f"Evaluating {args.dataset} ...")
         time_prefix = time.strftime('%y%m%d%H%M%S', time.localtime())
@@ -383,7 +387,15 @@ if __name__ == '__main__':
 
             print(vqa_scorer.accuracy)
 
+            with open(os.path.join(out_path, "vqa_{}_vqa_score_{}_res.txt".format(args.dataset, args.version)), 'w') as f:
+                f.write('{}'.format(vqa_scorer.accuracy))
+
         elif ds_collections[args.dataset]['metric'] == 'anls':
+            import pdb
+            pdb.set_trace()
+            out_dir = os.path.basename(results_file)
+            if not os.path.exists(out_dir):
+                os.makedirs(out_dir)
             json.dump(merged_outputs,
                       open(results_file, 'w'),
                       ensure_ascii=False)
@@ -393,10 +405,17 @@ if __name__ == '__main__':
             os.system('python infographicsvqa_eval.py -g ' +
                       ds_collections[args.dataset]['annotation'] + ' -s ' +
                       results_file)
+            res_file = 'output/results.json'
+            out_file = os.path.join(out_path, "vqa_{}_anls_{}_res.txt".format(args.dataset, args.version))
+            os.system('cp {} {}'.format(res_file, out_file))
         elif ds_collections[args.dataset]['metric'] == 'relaxed_accuracy':
+            relaxed_accuracy = evaluate_relaxed_accuracy(merged_outputs)
             print({
-                'relaxed_accuracy': evaluate_relaxed_accuracy(merged_outputs)
+                'relaxed_accuracy': relaxed_accuracy
             })
+            with open(os.path.join(out_path, "vqa_{}_relaxed_accuracy_{}_res.txt".format(args.dataset, args.version)), 'w') as f:
+                f.write('{}'.format(relaxed_accuracy))
+
         elif ds_collections[args.dataset]['metric'] == 'accuracy':
             if 'gqa' in args.dataset:
                 for entry in merged_outputs:
@@ -417,6 +436,9 @@ if __name__ == '__main__':
                         response = response.split(' of')[0]
                     response = response.strip()
                     entry['answer'] = response
-            print({'accuracy': evaluate_exact_match_accuracy(merged_outputs)})
+            accuracy = evaluate_exact_match_accuracy(merged_outputs)
+            print({'accuracy': accuracy})
+            with open(os.path.join(out_path, "vqa_{}_accuracy_{}_res.txt".format(args.dataset, args.version)), 'w') as f:
+                f.write('{}'.format(accuracy))
 
     torch.distributed.barrier()

@@ -108,6 +108,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='')
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--num-workers', type=int, default=1)
+    parser.add_argument('--version', type=int, default=1)
     args = parser.parse_args()
 
     torch.distributed.init_process_group(
@@ -179,6 +180,10 @@ if __name__ == '__main__':
     merged_outputs = [_ for _ in itertools.chain.from_iterable(merged_outputs)]
     PATTERN = re.compile(r'\((.*?)\),\((.*?)\)')
 
+    out_path = 'out'
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)
+
     if torch.distributed.get_rank() == 0:
         correct = total_cnt = 0
         for i, output in enumerate(merged_outputs):
@@ -211,4 +216,6 @@ if __name__ == '__main__':
 
         print(f"Evaluating {args.dataset} ...")
         print(f'Precision @ 1: {correct / total_cnt} \n')
+        with open(os.path.join(out_path, "grounding_{}_{}_res.txt".format(args.dataset, args.version)), 'w') as f:
+            f.write('Precision@0.5 oIoU={}'.format(correct / total_cnt))
     torch.distributed.barrier()

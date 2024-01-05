@@ -109,6 +109,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', type=str, default='')
     parser.add_argument('--batch-size', type=int, default=1)
     parser.add_argument('--num-workers', type=int, default=1)
+    parser.add_argument('--version', type=int, default=1)
     args = parser.parse_args()
 
     torch.distributed.init_process_group(
@@ -178,8 +179,14 @@ if __name__ == '__main__':
 
     merged_results = [_ for _ in itertools.chain.from_iterable(merged_results)]
 
+    out_path = 'out'
+    if not os.path.exists(out_path):
+        os.makedirs(out_path)
     if torch.distributed.get_rank() == 0:
         print(f"Evaluating {args.dataset} ...")
         print(f'Acc@1: {sum(merged_results) / len(merged_results)}')
+        with open(os.path.join(out_path, "multiple_choice_{}_{}_res.txt".format(args.dataset, args.version)), 'w') as f:
+            f.write('{}'.format(sum(merged_results) / len(merged_results)))
+        
 
     torch.distributed.barrier()

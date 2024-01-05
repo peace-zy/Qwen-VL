@@ -13,13 +13,9 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 ds_collections = {
-    'flickr': {
-        'train': 'data/flickr30k/flickr30k_karpathy_test.json',
-        'test': 'data/flickr30k/flickr30k_karpathy_test.json',
-    },
-    'nocaps': {
+    'huxinggaizao': {
         'train': '',
-        'test': 'data/nocaps/nocaps_val.json',
+        'test': '/aistudio/workspace/qwen_train/dataset/qwen_format_huxingjiedu_test_20231204_res.json',
     },
 }
 
@@ -27,27 +23,29 @@ ds_collections = {
 class CaptionDataset(torch.utils.data.Dataset):
 
     def __init__(self, train, test, prompt, few_shot=0):
-        self.images = json.load(open(test))['images']
+        self.images = json.load(open(test, "r"))
         self.prompt = prompt
 
         self.few_shot = few_shot
         if few_shot > 0:
-            self.train = json.load(open(train))['annotations']
+            self.train = json.load(open(train, "r"))
 
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, idx):
-        image_id, image_path = self.images[idx]['id'], self.images[idx][
-            'image']
+        #print("idx={}".format(idx))
+        print("dfsdfa={}".format(self.images[idx]))
+        image_id, image_path = self.images[idx]['id'], self.images[idx]["conversations"][0]["value"]
 
         few_shot_prompt = ''
         if self.few_shot > 0:
             few_shot_samples = random.sample(self.train, self.few_shot)
             for sample in few_shot_samples:
                 few_shot_prompt += self.prompt.format(
-                    sample['image']) + f" {sample['caption']}"
-
+                    sample['conversations'][0]["value"]) + f" {sample['conversations'][1]['value']}"
+        
+        #print("input_text={}".format(few_shot_prompt + self.prompt.format(image_path)))
         return {
             'image_id': image_id,
             'input_text': few_shot_prompt + self.prompt.format(image_path)
@@ -113,6 +111,7 @@ if __name__ == '__main__':
     torch.cuda.set_device(int(os.getenv('LOCAL_RANK', 0)))
 
     prompt = '<img>{}</img>Describe the image in English:'
+    prompt = '{}'
 
     model = AutoModelForCausalLM.from_pretrained(
         args.checkpoint, device_map='cuda', trust_remote_code=True).eval()
@@ -121,6 +120,7 @@ if __name__ == '__main__':
                                               trust_remote_code=True)
     tokenizer.padding_side = 'left'
     tokenizer.pad_token_id = tokenizer.eod_id
+    print(tokenizer.eod_id)
 
     random.seed(args.seed)
     dataset = CaptionDataset(
@@ -148,7 +148,7 @@ if __name__ == '__main__':
             attention_mask=attention_mask.cuda(),
             do_sample=False,
             num_beams=1,
-            max_new_tokens=30,
+            max_new_tokens=512,
             min_new_tokens=8,
             length_penalty=0,
             num_return_sequences=1,
@@ -161,6 +161,7 @@ if __name__ == '__main__':
             tokenizer.decode(_[input_ids.size(1):].cpu(),
                              skip_special_tokens=True).strip() for _ in pred
         ])
+        print(captions[-1])
 
     torch.distributed.barrier()
 
@@ -183,7 +184,8 @@ if __name__ == '__main__':
         results = []
         for image_id, caption in zip(merged_ids, merged_captions):
             results.append({
-                'image_id': int(image_id),
+                #'image_id': int(image_id),
+                'image_id': image_id,
                 'caption': caption,
             })
         time_prefix = time.strftime('%y%m%d%H%M%S', time.localtime())

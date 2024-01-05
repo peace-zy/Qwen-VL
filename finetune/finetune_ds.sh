@@ -2,16 +2,17 @@
 export CUDA_DEVICE_MAX_CONNECTIONS=1
 DIR=`pwd`
 
-GPUS_PER_NODE=8
+#GPUS_PER_NODE=8
+GPUS_PER_NODE=1
 NNODES=1
 NODE_RANK=0
 MASTER_ADDR=localhost
 MASTER_PORT=6001
 
-MODEL="Qwen/Qwen-VL-Chat" #"Qwen/Qwen-VL-Chat"/"Qwen/Qwen-VL" # Set the path if you do not want to load from huggingface directly
+MODEL="/mnt/aigc_chubao/zhangyan461/models/Qwen/Qwen-VL-Chat" #"Qwen/Qwen-VL-Chat"/"Qwen/Qwen-VL" # Set the path if you do not want to load from huggingface directly
 # ATTENTION: specify the path to your training data, which should be a json file consisting of a list of conversations.
 # See the section for finetuning in README for more information.
-DATA="path_to_data"
+DATA="/mnt/aigc_chubao/zhangyan461/dataset/vlm/visual_instruction_tuning/llava_instruct/LLaVA-Instruct-150K/qwen_format_llava_v1_5_mix665k.json"
 
 DISTRIBUTED_ARGS="
     --nproc_per_node $GPUS_PER_NODE \
@@ -24,7 +25,7 @@ DISTRIBUTED_ARGS="
 torchrun $DISTRIBUTED_ARGS finetune.py \
     --model_name_or_path $MODEL \
     --data_path $DATA \
-    --bf16 True \
+    --bf16 False \
     --fix_vit True \
     --output_dir output_qwen \
     --num_train_epochs 5 \

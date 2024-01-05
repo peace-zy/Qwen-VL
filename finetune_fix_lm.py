@@ -57,6 +57,7 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     use_lora: bool = False
     fix_vit: bool = True
+    fix_lm: bool = False
 
 
 @dataclass
@@ -331,6 +332,10 @@ def train():
             model.transformer.visual.requires_grad_(False)
             if hasattr(model.transformer.visual,'attn_pool'):
                 model.transformer.visual.attn_pool.requires_grad_(True)
+        if training_args.fix_lm and hasattr(model,'transformer') and hasattr(model.transformer,'h'):
+            model.transformer.h.requires_grad_(False)
+            if hasattr(model.transformer.h,'attn_pool'):
+                model.transformer.h.attn_pool.requires_grad_(True)
     rank0_print("Load tokenizer")
 
     tokenizer = transformers.AutoTokenizer.from_pretrained(

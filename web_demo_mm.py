@@ -14,11 +14,10 @@ import os
 import re
 import secrets
 import tempfile
-from modelscope import (
-    snapshot_download, AutoModelForCausalLM, AutoTokenizer, GenerationConfig
-)
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers.generation import GenerationConfig
 
-DEFAULT_CKPT_PATH = 'qwen/Qwen-VL-Chat'
+DEFAULT_CKPT_PATH = 'Qwen/Qwen-VL-Chat'
 BOX_TAG_PATTERN = r"<box>([\s\S]*?)</box>"
 PUNCTUATION = "！？。＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏."
 
@@ -43,8 +42,9 @@ def _get_args():
 
 
 def _load_model_tokenizer(args):
+    print("model_path={}".format(args.checkpoint_path))
     tokenizer = AutoTokenizer.from_pretrained(
-        args.checkpoint_path, trust_remote_code=True, resume_download=True, revision='master',
+        args.checkpoint_path, trust_remote_code=True, resume_download=True,
     )
 
     if args.cpu_only:
@@ -57,10 +57,9 @@ def _load_model_tokenizer(args):
         device_map=device_map,
         trust_remote_code=True,
         resume_download=True,
-        revision='master',
     ).eval()
     model.generation_config = GenerationConfig.from_pretrained(
-        args.checkpoint_path, trust_remote_code=True, resume_download=True, revision='master',
+        args.checkpoint_path, trust_remote_code=True, resume_download=True,
     )
 
     return model, tokenizer
@@ -97,9 +96,6 @@ def _parse_text(text):
     text = "".join(lines)
     return text
 
-def _remove_image_special(text):
-    text = text.replace('<ref>', '').replace('</ref>', '')
-    return re.sub(r'<box>.*?(</box>|$)', '', text)
 
 def _launch_demo(args, model, tokenizer):
     uploaded_file_dir = os.environ.get("GRADIO_TEMP_DIR") or str(
@@ -118,7 +114,8 @@ def _launch_demo(args, model, tokenizer):
         pre = ""
         for i, (q, a) in enumerate(history_cp):
             if isinstance(q, (tuple, list)):
-                q = f'Picture {pic_idx}: <img>{q[0]}</img>'
+                #q = f'Picture {pic_idx}: <img>{q[0]}</img>'
+                q = f'Picture {pic_idx}: <qwen_vl_img>{q[0]}</qwen_vl_img>'
                 pre += q + '\n'
                 pic_idx += 1
             else:
@@ -126,15 +123,8 @@ def _launch_demo(args, model, tokenizer):
                 history_filter.append((pre, a))
                 pre = ""
         history, message = history_filter[:-1], history_filter[-1][0]
-        # response, history = model.chat(tokenizer, message, history=history)
-        for response in model.chat_stream(tokenizer, message, history=history):
-            _chatbot[-1] = (_parse_text(chat_query), _remove_image_special(_parse_text(response)))
-
-            yield _chatbot
-            full_response = _parse_text(response)
-
-        response = full_response
-        history.append((message, response))
+        print("message={}".format(message))
+        response, history = model.chat(tokenizer, message, history=history)
         image = tokenizer.draw_bbox_on_latest_picture(response, history)
         if image is not None:
             temp_dir = secrets.token_hex(20)
@@ -143,14 +133,19 @@ def _launch_demo(args, model, tokenizer):
             name = f"tmp{secrets.token_hex(5)}.jpg"
             filename = temp_dir / name
             image.save(str(filename))
-            _chatbot.append((None, (str(filename),)))
+            _chatbot[-1] = (_parse_text(chat_query), (str(filename),))
+            chat_response = response.replace("<ref>", "")
+            chat_response = chat_response.replace(r"</ref>", "")
+            chat_response = re.sub(BOX_TAG_PATTERN, "", chat_response)
+            if chat_response != "":
+                _chatbot.append((None, chat_response))
         else:
             _chatbot[-1] = (_parse_text(chat_query), response)
-        # full_response = _parse_text(response)
+        full_response = _parse_text(response)
 
         task_history[-1] = (query, full_response)
         print("Qwen-VL-Chat: " + _parse_text(full_response))
-        yield _chatbot
+        return _chatbot
 
     def regenerate(_chatbot, task_history):
         if not task_history:
